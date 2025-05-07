@@ -1,0 +1,87 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+  package="com.example.zastro_android_call_notifications">
+
+    <!-- Only the permissions your plugin actually needs -->
+
+    <!--Voice Call Sensor-->
+    <uses-permission android:name="android.hardware.sensor.proximity" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
+    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+
+    <application>
+        <!-- Services required by your plugin -->
+
+        <receiver
+            android:name=".CallActionReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="CALL_NOTIFICATION_CLICK" />
+                <action android:name="ACTION_ANSWER_CALL" />
+                <action android:name="ACTION_DECLINE_CALL" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".CallReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="${applicationId}.com.example.zastro_android_call_notifications.SHOW_CALL_NOTIFICATION" />
+                <action android:name="${applicationId}.com.example.zastro_android_call_notifications.CANCEL_CALL_NOTIFICATION" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".CallNotificationService"
+            android:exported="false"
+            android:foregroundServiceType="phoneCall"
+            android:permission="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
+
+        <service
+            android:name=".CallTimerService"
+            android:exported="false"
+            android:foregroundServiceType="phoneCall"
+            android:permission="android.permission.FOREGROUND_SERVICE_PHONE_CALL"
+            android:stopWithTask="true"
+            />
+
+        <receiver
+            android:name=".CallOngoingTimeNotificationReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="${applicationId}.com.example.zastro_android_call_notifications.START_CALL_NOTIFICATION" />
+                <action android:name="${applicationId}.com.example.zastro_android_call_notifications.START_MICROPHONE_NOTIFICATION" />
+                <action android:name="${applicationId}.com.example.zastro_android_call_notifications.UPDATE_CALL_NOTIFICATION" />
+                <action android:name="${applicationId}.com.example.zastro_android_call_notifications.STOP_CALL_NOTIFICATION" />
+                <action android:name="${applicationId}.com.example.zastro_android_call_notifications.STOP_MIC_NOTIFICATION" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".CallForegroundService"
+            android:exported="false"
+            android:permission="android.permission.FOREGROUND_SERVICE_MICROPHONE"
+            android:foregroundServiceType="microphone|mediaPlayback" />
+
+        <activity
+            android:name=".TransparentActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity="" />
+
+    </application>
+</manifest>
