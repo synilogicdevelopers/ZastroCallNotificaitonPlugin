@@ -1,7 +1,7 @@
 name: zastro_android_call_notifications
-description: "A new Flutter plugin project."
+description: "A Flutter plugin to trigger call and microphone notifications."
 version: 0.0.1
-homepage:
+homepage: https://github.com/synilogicdevelopers/ZastroCallNotificaitonPlugin.git
 
 environment:
   sdk: ^3.6.1
