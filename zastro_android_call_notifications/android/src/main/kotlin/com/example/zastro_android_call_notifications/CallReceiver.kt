@@ -32,6 +32,7 @@ class CallReceiver : BroadcastReceiver() {
             } catch (e: Exception) {
                 -1
             }
+            Log.d("CallReceiver", "Parsed type: $type, notificationId: $notificationId")
             val callerName = messageData?.optString("customerName", "")
             val callerImage = messageData?.optString("customerImage", "")
             val serviceIntent = Intent(context, CallNotificationService::class.java).apply {
@@ -50,7 +51,13 @@ class CallReceiver : BroadcastReceiver() {
             }
         }
         else if (intent.action == "${context.packageName}.com.example.zastro_android_call_notifications.CANCEL_CALL_NOTIFICATION") {
-            val notificationId = intent.getIntExtra("notificationId", -1)
+//            val notificationId = intent.getIntExtra("notificationId", -1)
+            val messageDataJsonString = intent.getStringExtra("message_data_in_string")
+            val notificationId = try {
+                JSONObject(messageDataJsonString ?: "").optInt("notification_id", -1)
+            } catch (e: Exception) {
+                -1
+            }
             if (notificationId != -1) {
                 val serviceIntent =
                     Intent(context, CallNotificationService::class.java).apply {
