@@ -75,13 +75,19 @@ class ZastroAndroidCallNotificationsPlugin : FlutterPlugin, MethodCallHandler, A
                     println("Received: $messageData")
                     try {
                         val json = JSONObject(messageData)
-                        val type = json.optString("type", "")
 
+                        val type = json.optString("type", "").trim().lowercase()
+
+                        // Safely extract notification_id as Int
                         val notificationId = try {
-                            json.opt("notification_id")?.toString() ?: ""
+                            json.optString("notification_id", "-1").toInt()
                         } catch (e: Exception) {
-                            ""
+                            Log.e("ZastroPlugin", "Error parsing notification_id: ${e.message}")
+                            -1
                         }
+
+                        Log.d("ZastroPlugin", "Parsed type: $type")
+                        Log.d("ZastroPlugin", "Parsed notification_id: $notificationId")
 
                         val prefs = context.getSharedPreferences("zastro_prefs", Context.MODE_PRIVATE)
 
