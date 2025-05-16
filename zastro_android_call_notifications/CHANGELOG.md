@@ -7,3 +7,6 @@
 ## [0.0.3] - 2025-05-12
 - Compatible with AGP 8.1.0 and compileSdk 34
 
+## [0.0.4] - 2025-16-12
+- Solving unknown caller issue
+

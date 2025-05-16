@@ -79,6 +79,11 @@ class CallNotificationService : Service() {
 
         val CALL_NOTIFICATION_ID = intent?.getIntExtra("notificationId", -1) ?: -1
         val callerName = intent?.getStringExtra("caller_name") ?: "Unknown Caller"
+        if (callerName.trim().equals("Unknown Caller", ignoreCase = true)) {
+            println("Unknown caller detected, ignoring notification.")
+            stopSelf()
+            return START_NOT_STICKY
+        }
         val callerImage = intent?.getStringExtra("caller_image") ?: ""
         val type = intent?.getStringExtra("type") ?: ""
         val messageDataInString = intent?.getStringExtra("message_data_in_string") ?: ""
