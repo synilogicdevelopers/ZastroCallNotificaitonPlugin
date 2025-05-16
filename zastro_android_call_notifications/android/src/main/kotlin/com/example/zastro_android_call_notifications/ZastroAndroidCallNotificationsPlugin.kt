@@ -86,8 +86,8 @@ class ZastroAndroidCallNotificationsPlugin : FlutterPlugin, MethodCallHandler, A
                             -1
                         }
 
-                        Log.d("ZastroPlugin", "Parsed type: $type")
-                        Log.d("ZastroPlugin", "Parsed notification_id: $notificationId")
+//                        Log.d("ZastroPlugin", "Parsed type: $type")
+//                        Log.d("ZastroPlugin", "Parsed notification_id: $notificationId")
 
                         val prefs = context.getSharedPreferences("zastro_prefs", Context.MODE_PRIVATE)
 
@@ -112,10 +112,10 @@ class ZastroAndroidCallNotificationsPlugin : FlutterPlugin, MethodCallHandler, A
                                 putExtra("message_data_in_string", messageData)
                             }
                         intent.setPackage(context.packageName)
-                        Log.d(
-                            "FlutterCallkitIncoming",
-                            "Triggering triggerBroadcastNotification with data: " + messageData.toString()
-                        )
+//                        Log.d(
+//                            "FlutterCallkitIncoming",
+//                            "Triggering triggerBroadcastNotification with data: " + messageData.toString()
+//                        )
 
                         context.sendBroadcast(intent)
                         println("Broadcast sent!")
@@ -135,10 +135,10 @@ class ZastroAndroidCallNotificationsPlugin : FlutterPlugin, MethodCallHandler, A
                     val callerImage = call.argument<String>("caller_image") ?: ""
                     val messageDataInString =
                         call.argument<String>("message_data_in_string") ?: "{}"
-                    Log.d(
-                        "FlutterCallkitIncoming",
-                        "Triggering showIncomingNotification with data: " + messageDataInString.toString()
-                    )
+//                    Log.d(
+//                        "FlutterCallkitIncoming",
+//                        "Triggering showIncomingNotification with data: " + messageDataInString.toString()
+//                    )
 
                     startCallNotificationService(
                         type,
