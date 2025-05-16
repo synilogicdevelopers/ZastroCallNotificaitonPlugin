@@ -74,8 +74,35 @@ class ZastroAndroidCallNotificationsPlugin : FlutterPlugin, MethodCallHandler, A
                     Log.d("ZastroPlugin", "Received JSON string: $messageData")
                     println("Received: $messageData")
                     try {
+                        val json = JSONObject(messageData)
+                        val type = json.optString("type", "")
+
+                        val notificationId = try {
+                            json.opt("notification_id")?.toString() ?: ""
+                        } catch (e: Exception) {
+                            ""
+                        }
+
+                        val prefs = context.getSharedPreferences("zastro_prefs", Context.MODE_PRIVATE)
+
+                        if (type == "cancel") {
+                            prefs.edit().putBoolean("notif_cancelled_$notificationId", true).apply()
+                        } else {
+                            val isCancelled = prefs.getBoolean("notif_cancelled_$notificationId", false)
+                            if (isCancelled) {
+                                Log.d("ZastroPlugin", "Notification $notificationId already cancelled, not showing again.")
+                                result.success("Notification already cancelled, skipping.")
+                                return@setMethodCallHandler
+                            }
+                        }
+
+                        val action = if (type == "cancel") {
+                            "${context.packageName}.com.example.zastro_android_call_notifications.CANCEL_CALL_NOTIFICATION"
+                        } else {
+                            "${context.packageName}.com.example.zastro_android_call_notifications.SHOW_CALL_NOTIFICATION"
+                        }
                         val intent =
-                            Intent("${context.packageName}.com.example.zastro_android_call_notifications.SHOW_CALL_NOTIFICATION").apply {
+                            Intent(action).apply {
                                 putExtra("message_data_in_string", messageData)
                             }
                         intent.setPackage(context.packageName)
