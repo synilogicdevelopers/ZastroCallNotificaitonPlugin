@@ -26,7 +26,12 @@ class CallReceiver : BroadcastReceiver() {
             val type = messageData?.optString("type", "")
             val uniqueId = messageData?.optString("uniqueId", "")
             val customerUniId = messageData?.optString("customerUniId", "")
-            val notificationId = messageData?.optInt("notification_id", -1) ?: -1
+//            val notificationId = messageData?.optInt("notification_id", -1) ?: -1
+            val notificationId = try {
+                JSONObject(messageDataJsonString ?: "").optInt("notification_id", -1)
+            } catch (e: Exception) {
+                -1
+            }
             val callerName = messageData?.optString("customerName", "")
             val callerImage = messageData?.optString("customerImage", "")
             val serviceIntent = Intent(context, CallNotificationService::class.java).apply {
