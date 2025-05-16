@@ -10,3 +10,6 @@
 ## [0.0.4] - 2025-16-12
 - Solving unknown caller issue
 
+## [0.0.5] - 2025-16-12
+- Solving unknown caller issue, 0.0.4 version was a failed attempt.
+
