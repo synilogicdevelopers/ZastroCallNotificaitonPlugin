@@ -92,7 +92,7 @@ class ZastroAndroidCallNotificationsPlugin : FlutterPlugin, MethodCallHandler, A
                             if (isCancelled) {
                                 Log.d("ZastroPlugin", "Notification $notificationId already cancelled, not showing again.")
                                 result.success("Notification already cancelled, skipping.")
-                                return@setMethodCallHandler
+                                return
                             }
                         }
 
