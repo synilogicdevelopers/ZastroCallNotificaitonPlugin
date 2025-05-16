@@ -16,3 +16,6 @@
 ## [0.0.6] - 2025-16-12
 - Solving unknown caller issue, 0.0.5 version had a return error.
 
+## [0.0.7] - 2025-16-12
+- Solved unknown caller issue and Notification not cancelling issue. Please don`t use 0.0.4 - 0.0.6 versions .
+
