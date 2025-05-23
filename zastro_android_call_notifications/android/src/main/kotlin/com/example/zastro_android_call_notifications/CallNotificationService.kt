@@ -160,6 +160,7 @@ class CallNotificationService : Service() {
     }
 
     override fun onDestroy() {
+        serviceScope.cancel()
         stopRingtone()
         stopVibration()
         super.onDestroy()
