@@ -65,6 +65,7 @@ class CallNotificationService : Service() {
     private var vibrator: Vibrator? = null
     private var vibrationJob: Job? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private var ringtone: Ringtone? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -300,46 +301,19 @@ class CallNotificationService : Service() {
 
     private fun startRingtone() {
         stopRingtone()
-        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val focusRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
-                )
-                .setOnAudioFocusChangeListener { }
+        val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE) ?: return
+
+        ringtone = RingtoneManager.getRingtone(applicationContext, ringtoneUri)
+        ringtone?.apply {
+            audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build()
-        } else {
-            null
+            isLooping = true // only available on Android P+
+            play()
         }
-
-        val focusResult = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            audioManager.requestAudioFocus(focusRequest!!)
-        } else {
-            audioManager.requestAudioFocus(null, AudioManager.STREAM_RING, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-        }
-
-        if (focusResult == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-            mediaPlayer = MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
-                )
-                setDataSource(this@CallNotificationService, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))
-                isLooping = true
-                prepare()
-                start()
-            }
-        }
-
-        // Set volume manually
-//        val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING)
-//        audioManager.setStreamVolume(AudioManager.STREAM_RING, maxVolume, AudioManager.FLAG_SHOW_UI)
     }
+
 
     private fun startVibration() {
         stopVibration()
@@ -358,12 +332,9 @@ class CallNotificationService : Service() {
 
 
 
-
-
     private fun stopRingtone() {
-        mediaPlayer?.stop()
-        mediaPlayer?.release()
-        mediaPlayer = null
+        ringtone?.stop()
+        ringtone = null
     }
 
     private fun stopVibration() {
