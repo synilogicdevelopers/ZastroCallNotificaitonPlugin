@@ -100,7 +100,8 @@ class CallNotificationService : Service() {
         val customerUniId = intent?.getStringExtra("customerUniId") ?: ""
         println("CallNotificationService Started!$CALL_NOTIFICATION_ID")
 
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val notificationManager =
+            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         when (intent?.action) {
             "ACTION_ANSWER_CALL" -> {
@@ -130,29 +131,40 @@ class CallNotificationService : Service() {
                     stopSelf()
                 }
             }
+
             else -> {
                 serviceScope.launch {
-                    val callerBitmap = if (callerImage.isNotEmpty()) getBitmapFromURL(callerImage) else null
-                    val notification = createCallNotification(messageDataInString, callerName, callerImage, CALL_NOTIFICATION_ID, type, uniqueId, customerUniId, callerBitmap)
+                    val callerBitmap =
+                        if (callerImage.isNotEmpty()) getBitmapFromURL(callerImage) else null
+                    val notification = createCallNotification(
+                        messageDataInString,
+                        callerName,
+                        callerImage,
+                        CALL_NOTIFICATION_ID,
+                        type,
+                        uniqueId,
+                        customerUniId,
+                        callerBitmap
+                    )
 
 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // Android 14+
-                    try {
-                        startForeground(
-                            CALL_NOTIFICATION_ID,
-                            notification,
-                            ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
-                        )
-                    } catch (e: Exception) {
-                        println("CallNotificationService Error starting foreground service ${e.localizedMessage}")
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // Android 14+
+                        try {
+                            startForeground(
+                                CALL_NOTIFICATION_ID,
+                                notification,
+                                ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
+                            )
+                        } catch (e: Exception) {
+                            println("CallNotificationService Error starting foreground service ${e.localizedMessage}")
+                        }
+                    } else {
+                        startForeground(CALL_NOTIFICATION_ID, notification)
                     }
-                } else {
-                    startForeground(CALL_NOTIFICATION_ID, notification)
-                }
 
-                startRingtone()
-                startVibration()
-                wakeScreen()
+                    startRingtone()
+                    startVibration()
+                    wakeScreen()
                 }
             }
         }
@@ -170,8 +182,18 @@ class CallNotificationService : Service() {
         return null
     }
 
-    private fun createCallNotification(messageDataInString: String, callerName: String, callerImage: String, CALL_NOTIFICATION_ID: Int, type: String, uniqueId: String, customerUniId: String, callerBitmap: Bitmap?): Notification {
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    private fun createCallNotification(
+        messageDataInString: String,
+        callerName: String,
+        callerImage: String,
+        CALL_NOTIFICATION_ID: Int,
+        type: String,
+        uniqueId: String,
+        customerUniId: String,
+        callerBitmap: Bitmap?
+    ): Notification {
+        val notificationManager =
+            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val fullScreenIntent = Intent()
         val fullScreenPendingIntent = PendingIntent.getActivity(
             this,
@@ -218,7 +240,12 @@ class CallNotificationService : Service() {
             putString("customerUniId", customerUniId)
         }
 
-        val intent = TransparentActivity.getIntent(this, CALL_NOTIFICATION_CLICK, messageDataInString, bundle)
+        val intent = TransparentActivity.getIntent(
+            this,
+            CALL_NOTIFICATION_CLICK,
+            messageDataInString,
+            bundle
+        )
 
         // Send a broadcast if the app is in the foreground, else open the app
         val pendingIntent = if (isAppInForeground()) {
@@ -238,7 +265,8 @@ class CallNotificationService : Service() {
 
         println("Sending messageDataInString: $messageDataInString")
 
-        val answerIntent = TransparentActivity.getIntent(this, ACTION_ANSWER_CALL, messageDataInString, bundle)
+        val answerIntent =
+            TransparentActivity.getIntent(this, ACTION_ANSWER_CALL, messageDataInString, bundle)
 
         val answerPendingIntent = if (isAppInForeground()) {
             PendingIntent.getActivity(
@@ -248,12 +276,14 @@ class CallNotificationService : Service() {
         } else {
             PendingIntent.getActivity(
                 this, 4, launchIntent.apply {
-                    putExtra("key", ACTION_ANSWER_CALL) } ?: Intent(),
+                    putExtra("key", ACTION_ANSWER_CALL)
+                } ?: Intent(),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
         }
 
-        val declineIntent = TransparentActivity.getIntent(this, ACTION_DECLINE_CALL, messageDataInString, bundle)
+        val declineIntent =
+            TransparentActivity.getIntent(this, ACTION_DECLINE_CALL, messageDataInString, bundle)
 
         val declinePendingIntent = if (isAppInForeground()) {
             PendingIntent.getActivity(
@@ -263,7 +293,8 @@ class CallNotificationService : Service() {
         } else {
             PendingIntent.getActivity(
                 this, 5, launchIntent.apply {
-                    putExtra("key", ACTION_DECLINE_CALL) } ?: Intent(),
+                    putExtra("key", ACTION_DECLINE_CALL)
+                } ?: Intent(),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
         }
@@ -278,16 +309,17 @@ class CallNotificationService : Service() {
             .setOngoing(true)
             .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
 
-         val person = Person.Builder().setName(callerName)
-                .apply { if (callerBitmap != null)
+        val person = Person.Builder().setName(callerName)
+            .apply {
+                if (callerBitmap != null)
                     setIcon(androidx.core.graphics.drawable.IconCompat.createWithBitmap(callerBitmap))
-                }
-                .build()
-            val callStyle = NotificationCompat.CallStyle.forIncomingCall(
-                person, declinePendingIntent, answerPendingIntent
-            )
-            notificationBuilder.setStyle(callStyle)
-            notificationBuilder.setContentIntent(pendingIntent)
+            }
+            .build()
+        val callStyle = NotificationCompat.CallStyle.forIncomingCall(
+            person, declinePendingIntent, answerPendingIntent
+        )
+        notificationBuilder.setStyle(callStyle)
+        notificationBuilder.setContentIntent(pendingIntent)
 //            notificationBuilder.setFullScreenIntent(pendingIntent, true) // Use below one
 //            if (!isAppInForeground()) {
 //                notificationBuilder.setFullScreenIntent(pendingIntent, true)
@@ -314,89 +346,108 @@ class CallNotificationService : Service() {
         } else {
             null
         }
-
         val focusResult = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             audioManager.requestAudioFocus(focusRequest!!)
         } else {
-            audioManager.requestAudioFocus(null, AudioManager.STREAM_RING, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+            audioManager.requestAudioFocus(
+                null,
+                AudioManager.STREAM_RING,
+                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+            )
         }
 
         if (focusResult == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-            mediaPlayer = MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
-                )
-                setDataSource(this@CallNotificationService, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))
-                isLooping = true
-                prepare()
-                start()
+            try {
+                val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+                mediaPlayer = MediaPlayer().apply {
+                    setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build()
+                    )
+                    setDataSource(this@CallNotificationService, ringtoneUri)
+                    isLooping = true
+                    prepare()
+                    start()
+                }
+            } catch (e: IOException) {
+                e.printStackTrace()
+                Log.e("CallNotificationService", "Failed to play ringtone: ${e.localizedMessage}")
+            } catch (e: IllegalStateException) {
+                e.printStackTrace()
             }
-        }
-
-        // Set volume manually
+            // Set volume manually
 //        val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING)
 //        audioManager.setStreamVolume(AudioManager.STREAM_RING, maxVolume, AudioManager.FLAG_SHOW_UI)
-    }
+        }
 
-    private fun startVibration() {
-        stopVibration()
+        private fun startVibration() {
+            stopVibration()
 
-        vibrationJob = GlobalScope.launch {
-            while (isActive) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    vibrator?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 700, 500, 700), 0))
-                } else {
-                    vibrator?.vibrate(longArrayOf(0, 700, 500, 700), 0)
+            vibrationJob = GlobalScope.launch {
+                while (isActive) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        vibrator?.vibrate(
+                            VibrationEffect.createWaveform(
+                                longArrayOf(
+                                    0,
+                                    700,
+                                    500,
+                                    700
+                                ), 0
+                            )
+                        )
+                    } else {
+                        vibrator?.vibrate(longArrayOf(0, 700, 500, 700), 0)
+                    }
+                    kotlinx.coroutines.delay(3000)
                 }
-                kotlinx.coroutines.delay(3000)
             }
         }
-    }
 
 
-
-
-
-    private fun stopRingtone() {
-        mediaPlayer?.stop()
-        mediaPlayer?.release()
-        mediaPlayer = null
-    }
-
-    private fun stopVibration() {
-        vibrationJob?.cancel()
-        vibrationJob = null
-        vibrator?.cancel()
-    }
-
-
-    private fun wakeScreen() {
-        (getSystemService(Context.POWER_SERVICE) as PowerManager).newWakeLock(
-            PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
-            "CallNotificationService:WakeLock"
-        ).acquire(5000)
-    }
-
-    private suspend fun getBitmapFromURL(src: String): Bitmap? {
-        return withContext(Dispatchers.IO) {
-            try { BitmapFactory.decodeStream(URL(src).openConnection().getInputStream()) }
-            catch (e: Exception) { null }
+        private fun stopRingtone() {
+            mediaPlayer?.stop()
+            mediaPlayer?.release()
+            mediaPlayer = null
         }
-    }
 
-    private fun isAppInForeground(): Boolean {
-        val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
-        val runningTasks = activityManager.runningAppProcesses ?: return false
+        private fun stopVibration() {
+            vibrationJob?.cancel()
+            vibrationJob = null
+            vibrator?.cancel()
+        }
 
-        for (task in runningTasks) {
-            if (task.processName == packageName && task.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND) {
-                return true
+
+        private fun wakeScreen() {
+            (getSystemService(Context.POWER_SERVICE) as PowerManager).newWakeLock(
+                PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
+                "CallNotificationService:WakeLock"
+            ).acquire(5000)
+        }
+
+        private suspend fun getBitmapFromURL(src: String): Bitmap? {
+            return withContext(Dispatchers.IO) {
+                try {
+                    BitmapFactory.decodeStream(URL(src).openConnection().getInputStream())
+                } catch (e: Exception) {
+                    null
+                }
             }
         }
-        return false
-    }
 
-}
+        private fun isAppInForeground(): Boolean {
+            val activityManager =
+                getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+            val runningTasks = activityManager.runningAppProcesses ?: return false
+
+            for (task in runningTasks) {
+                if (task.processName == packageName && task.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND) {
+                    return true
+                }
+            }
+            return false
+        }
+
+    }
