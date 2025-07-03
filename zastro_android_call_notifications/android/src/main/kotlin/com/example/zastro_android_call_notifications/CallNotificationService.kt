@@ -134,6 +134,29 @@ class CallNotificationService : Service() {
             }
 
             else -> {
+                // Step 1: Immediately show notification without photo
+                val placeholderNotification = createCallNotification(
+                    messageDataInString,
+                    callerName,
+                    callerImage,
+                    CALL_NOTIFICATION_ID,
+                    type,
+                    uniqueId,
+                    customerUniId,
+                    callerBitmap = null
+                )
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    startForeground(
+                        CALL_NOTIFICATION_ID,
+                        placeholderNotification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
+                    )
+                } else {
+                    startForeground(CALL_NOTIFICATION_ID, placeholderNotification)
+                }
+
+                //Step 2: In background, load photo and update notification
                 serviceScope.launch {
                     val callerBitmap =
                         if (callerImage.isNotEmpty()) getBitmapFromURL(callerImage) else null
