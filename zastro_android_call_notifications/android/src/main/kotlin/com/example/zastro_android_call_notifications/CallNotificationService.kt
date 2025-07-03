@@ -377,6 +377,7 @@ class CallNotificationService : Service() {
             } catch (e: IllegalStateException) {
                 e.printStackTrace()
             }
+        }
             // Set volume manually
 //        val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING)
 //        audioManager.setStreamVolume(AudioManager.STREAM_RING, maxVolume, AudioManager.FLAG_SHOW_UI)
