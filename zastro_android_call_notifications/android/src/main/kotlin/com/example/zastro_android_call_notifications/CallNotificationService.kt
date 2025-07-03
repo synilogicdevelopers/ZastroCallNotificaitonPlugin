@@ -46,6 +46,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.cancel
 import android.util.Log
+import java.io.IOException
 
 
 class CallNotificationService : Service() {
@@ -373,7 +374,7 @@ class CallNotificationService : Service() {
                 }
             } catch (e: IOException) {
                 e.printStackTrace()
-                Log.e("CallNotificationService", "Failed to play ringtone: ${e.localizedMessage}")
+                Log.e("CallNotificationService", "Ringtone failed, falling back to vibration: ${e.message}")
             } catch (e: IllegalStateException) {
                 e.printStackTrace()
             }
