@@ -22,3 +22,6 @@
 ## [0.0.8] - 2025-05-23
 - Solved Ghost ring issue.
 
+## [0.0.9] - 2025-07-03
+- Fixed crash causing code.
+
