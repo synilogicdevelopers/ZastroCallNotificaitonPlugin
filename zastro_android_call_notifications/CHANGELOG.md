@@ -25,3 +25,6 @@
 ## [0.0.9] - 2025-07-03
 - Fixed crash causing code.
 
+## 0.0.10
+- Fixed notification field: replaced `contentTitle` with `contentText` to correctly detect notification types (chat, video call, audio call).
+

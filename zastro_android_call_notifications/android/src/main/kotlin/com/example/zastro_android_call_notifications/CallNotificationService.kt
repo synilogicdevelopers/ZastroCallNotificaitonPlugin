@@ -325,7 +325,7 @@ class CallNotificationService : Service() {
 
         val notificationBuilder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.incoming_call_arrow)
-            .setContentTitle("Incoming $type")
+            .setContentText("Incoming $type")
             .setFullScreenIntent(fullScreenPendingIntent, true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_CALL)

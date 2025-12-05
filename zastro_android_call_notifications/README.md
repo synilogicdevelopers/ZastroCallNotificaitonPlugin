@@ -25,6 +25,11 @@ Built for apps that require custom **VoIP-style UI** using foreground services.
 ✅ Mic recording notification with persistent indicator   
 ✅ Foreground service support for Android 10+
 
+## Screenshot
+
+![Zastro Notification Screenshot](assets/screenshots/zastro_screenshot.png)
+
+
 ## Getting Started
 
 1. Add dependency
