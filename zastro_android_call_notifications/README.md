@@ -20,7 +20,8 @@ Built for apps that require custom **VoIP-style UI** using foreground services.
 
 ## Features
 
-✅ Incoming call notifications with full-screen UI  
+✅ Incoming call notifications with a WhatsApp-style full screen call UI  
+✅ Works while the app is backgrounded, terminated, or the device is locked  
 ✅ Ongoing call notification with timer  
 ✅ Mic recording notification with persistent indicator   
 ✅ Foreground service support for Android 10+
@@ -171,4 +172,43 @@ AndroidManifest.xml
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
+
+## Full screen incoming call screen
+
+Since `0.0.11` the incoming call notification opens a full screen call screen
+(caller photo, name, call type, Accept / Decline) instead of only showing a
+heads-up notification. It shows over the lock screen and turns the screen on, so
+it works while the app is in the background, terminated, or the device is asleep.
+
+Nothing has to change in the host app. Accept and Decline fire the exact same
+`PendingIntent`s the notification's own action buttons already carried, so the
+`onCallAction` / launch-intent handling shown above keeps working unchanged.
+
+Note that Android only launches a full screen intent when the device is locked or
+idle. If the user is actively using the device, the system shows the heads-up
+call notification instead — this is Android's documented behaviour and is what
+WhatsApp and the system dialer do as well.
+
+### Android 14 (API 34) and above
+
+Android 14 turned `USE_FULL_SCREEN_INTENT` into a user-revocable special access.
+When it is revoked the call still rings, but Android silently downgrades it to a
+heads-up notification and the full screen screen never appears. Two helpers are
+provided so the host app can detect and repair that:
+
+    /// true on Android 13 and below, where the permission is implicit.
+    final allowed = await ChatNotificationPlugin.canUseFullScreenIntent();
+
+    if (!allowed) {
+      // Opens the system "Full screen notifications" page for your app.
+      // Returns false if nothing on the device handles the intent.
+      await ChatNotificationPlugin.openFullScreenIntentSettings();
+    }
+
+Call this once, next to your other permission requests. Do not call it on every
+cold start — persist a flag so the user is never repeatedly dropped into Settings.
+
+`USE_FULL_SCREEN_INTENT` is declared by the plugin's own manifest, so no extra
+entry is needed in the host app's `AndroidManifest.xml`.
 

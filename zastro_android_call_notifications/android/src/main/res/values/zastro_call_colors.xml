@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Colours are prefixed with `zastro_` so that merging this library's resources
+  into the host application can never collide with the app's own resources.
+-->
+<resources>
+    <color name="zastro_call_bg_top">#FF16212C</color>
+    <color name="zastro_call_bg_center">#FF101A23</color>
+    <color name="zastro_call_bg_bottom">#FF080D12</color>
+
+    <color name="zastro_call_avatar_bg">#33FFFFFF</color>
+    <color name="zastro_call_avatar_fg">#B3FFFFFF</color>
+
+    <color name="zastro_call_primary_text">#FFFFFFFF</color>
+    <color name="zastro_call_secondary_text">#B3CFD8DC</color>
+
+    <color name="zastro_call_answer">#FF00C853</color>
+    <color name="zastro_call_answer_pressed">#FF00913C</color>
+    <color name="zastro_call_decline">#FFE53935</color>
+    <color name="zastro_call_decline_pressed">#FFB02724</color>
+</resources>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Inset of the placeholder glyph inside the avatar circle. Removed in
+         code once the real caller photo, which fills the circle, is loaded. -->
+    <dimen name="zastro_call_avatar_padding">32dp</dimen>
+</resources>

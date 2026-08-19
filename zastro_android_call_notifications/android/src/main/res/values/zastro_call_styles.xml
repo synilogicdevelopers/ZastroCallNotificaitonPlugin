@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Framework Material theme (no AppCompat/Material dependency needed) so the
+      activity can be a plain android.app.Activity, exactly like
+      TransparentActivity in this same module.
+    -->
+    <style name="ZastroIncomingCallTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/zastro_call_bg_bottom</item>
+        <item name="android:windowShowWallpaper">false</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <!-- minSdk of this module is 21, so these are always available. -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

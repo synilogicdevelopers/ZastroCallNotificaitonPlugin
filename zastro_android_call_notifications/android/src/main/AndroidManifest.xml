@@ -55,6 +55,28 @@
             />
 
 
+        <!--
+          WhatsApp-style full-screen incoming call screen. It is only ever
+          started by the notification's full-screen intent, hence exported=false.
+
+          singleTask + excludeFromRecents + empty taskAffinity keep it in its own
+          task so it never lands on top of (or inside) the Flutter task, and
+          showWhenLocked/turnScreenOn let it appear on a locked or sleeping
+          device. The showWhenLocked/turnScreenOn attributes are API 27+; older
+          platforms ignore them and the activity sets the equivalent window
+          flags in code instead.
+        -->
+        <activity
+            android:name=".IncomingCallActivity"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:showWhenLocked="true"
+            android:taskAffinity=""
+            android:theme="@style/ZastroIncomingCallTheme"
+            android:turnScreenOn="true" />
+
         <activity
             android:name=".TransparentActivity"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"

@@ -23,6 +23,8 @@ import io.flutter.plugin.common.MethodChannel.Result
 import org.json.JSONObject
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
+import android.net.Uri
+import android.provider.Settings
 
 
 class ZastroAndroidCallNotificationsPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
@@ -162,6 +164,20 @@ class ZastroAndroidCallNotificationsPlugin : FlutterPlugin, MethodCallHandler, A
                     result.success(null)
                 }
 
+                /*
+                 * Android 14 (API 34) turned USE_FULL_SCREEN_INTENT into a
+                 * user-revocable special access. Without it the incoming call
+                 * notification is still posted, but the system shows it as a
+                 * heads-up instead of launching the full-screen call screen.
+                 */
+                "canUseFullScreenIntent" -> {
+                    result.success(canUseFullScreenIntent())
+                }
+
+                "openFullScreenIntentSettings" -> {
+                    result.success(openFullScreenIntentSettings())
+                }
+
                 "notificationData" -> {
                     if (latestNotificationData != null) {
                         result.success(latestNotificationData)
@@ -242,6 +258,45 @@ class ZastroAndroidCallNotificationsPlugin : FlutterPlugin, MethodCallHandler, A
             }
         } catch (e: Exception) {
             result.error("ERROR", e.localizedMessage, null)
+        }
+    }
+
+    /** `true` on anything below Android 14, where the permission is implicit. */
+    private fun canUseFullScreenIntent(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return true
+        return try {
+            val notificationManager =
+                context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.canUseFullScreenIntent()
+        } catch (e: Exception) {
+            Log.w("ZastroPlugin", "canUseFullScreenIntent check failed: ${e.message}")
+            true
+        }
+    }
+
+    /**
+     * Opens the "Full screen notifications" special access page for this app.
+     * Returns false when there is nothing to open (below Android 14) or when no
+     * OEM activity handles the intent, so the caller can stay silent.
+     */
+    private fun openFullScreenIntentSettings(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return false
+        return try {
+            val intent = Intent(
+                Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                Uri.parse("package:${context.packageName}")
+            )
+            val launcher = activity
+            if (launcher != null) {
+                launcher.startActivity(intent)
+            } else {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(intent)
+            }
+            true
+        } catch (e: Exception) {
+            Log.w("ZastroPlugin", "Could not open full screen intent settings: ${e.message}")
+            false
         }
     }
 

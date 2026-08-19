@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="zastro_incoming_call">Incoming call</string>
+    <string name="zastro_incoming_voice_call">Incoming voice call</string>
+    <string name="zastro_incoming_video_call">Incoming video call</string>
+    <string name="zastro_incoming_chat">Incoming chat request</string>
+    <string name="zastro_unknown_caller">Unknown Caller</string>
+    <string name="zastro_answer">Accept</string>
+    <string name="zastro_decline">Decline</string>
+</resources>

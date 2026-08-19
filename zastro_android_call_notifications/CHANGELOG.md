@@ -28,3 +28,19 @@
 ## 0.0.10
 - Fixed notification field: replaced `contentTitle` with `contentText` to correctly detect notification types (chat, video call, audio call).
 
+## 0.0.11
+- Added a WhatsApp-style full screen incoming call screen (`IncomingCallActivity`).
+  The full screen intent on the call notification was previously built from an
+  empty `Intent()`, so it resolved to nothing and never opened any UI — the call
+  only ever appeared as a heads-up / lock screen notification. It now shows a
+  real call screen while the app is in the background, terminated, or the device
+  is locked or asleep.
+- Accept / Decline on the new screen fire the exact same `PendingIntent`s the
+  notification's own buttons carry, so existing host app call handling keeps
+  working unchanged — no migration needed.
+- Added `ChatNotificationPlugin.canUseFullScreenIntent()` and
+  `ChatNotificationPlugin.openFullScreenIntentSettings()`. Android 14 (API 34)
+  made `USE_FULL_SCREEN_INTENT` a user-revocable special access; when it is
+  revoked Android silently downgrades the call to a heads-up notification, so
+  host apps need to be able to detect and repair that.
+

@@ -59,6 +59,12 @@ class CallNotificationService : Service() {
         const val ACTION_DECLINE_CALL = "ACTION_DECLINE_CALL"
         const val CALL_NOTIFICATION_CLICK = "CALL_NOTIFICATION_CLICK"
         const val NOTIFICATION_ICON_RES_ID = "notification_icon_res_id"
+
+        /**
+         * Own request code for the full-screen intent so it can never collide
+         * with the answer/decline/content pending intents above.
+         */
+        private const val FULL_SCREEN_REQUEST_CODE = 100
     }
 
     private var flutterEngine: FlutterEngine? = null
@@ -66,6 +72,9 @@ class CallNotificationService : Service() {
     private var vibrator: Vibrator? = null
     private var vibrationJob: Job? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    /** Id of the call currently ringing, so teardown can be scoped to it. */
+    private var ringingNotificationId: Int = -1
 
     override fun onCreate() {
         super.onCreate()
@@ -134,6 +143,7 @@ class CallNotificationService : Service() {
             }
 
             else -> {
+                ringingNotificationId = CALL_NOTIFICATION_ID
                 // Step 1: Immediately show notification without photo
                 val placeholderNotification = createCallNotification(
                     messageDataInString,
@@ -199,6 +209,9 @@ class CallNotificationService : Service() {
         serviceScope.cancel()
         stopRingtone()
         stopVibration()
+        // The call stopped ringing (answered, declined, cancelled by the caller
+        // or stopped by Flutter) — take the full-screen UI down with it.
+        IncomingCallActivity.dismiss(this, ringingNotificationId)
         super.onDestroy()
     }
 
@@ -218,13 +231,6 @@ class CallNotificationService : Service() {
     ): Notification {
         val notificationManager =
             getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val fullScreenIntent = Intent()
-        val fullScreenPendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            fullScreenIntent,
-            PendingIntent.FLAG_IMMUTABLE
-        )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
@@ -322,6 +328,30 @@ class CallNotificationService : Service() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
         }
+
+        // Full-screen intent. This is what makes a WhatsApp-style incoming call
+        // screen appear while the app is backgrounded, terminated or the device
+        // is locked — a background activity start is otherwise blocked on
+        // Android 10+. The same pending intents the notification's own buttons
+        // carry are handed to the screen, so both paths behave identically.
+        // If the user/OEM has revoked USE_FULL_SCREEN_INTENT (Android 14+),
+        // Android silently degrades this to the heads-up notification below,
+        // which is exactly the previous behaviour.
+        val fullScreenPendingIntent = PendingIntent.getActivity(
+            this,
+            FULL_SCREEN_REQUEST_CODE,
+            IncomingCallActivity.getIntent(
+                this,
+                CALL_NOTIFICATION_ID,
+                callerName,
+                callerImage,
+                type,
+                answerPendingIntent,
+                declinePendingIntent,
+                pendingIntent
+            ),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
         val notificationBuilder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.incoming_call_arrow)

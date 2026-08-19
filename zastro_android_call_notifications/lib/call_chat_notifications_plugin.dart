@@ -39,6 +39,45 @@ class ChatNotificationPlugin {
     await _channel.invokeMethod('initialize');
   }
 
+  /// Whether the OS still lets this app launch the full-screen incoming call
+  /// screen.
+  ///
+  /// Android 14 (API 34) turned `USE_FULL_SCREEN_INTENT` into a user-revocable
+  /// special access. When it is revoked the call notification is still posted
+  /// and still rings — Android just shows it as a heads-up instead of opening
+  /// the full-screen call UI.
+  ///
+  /// Returns `true` on older Android versions and on any failure, so callers
+  /// never nag the user because of an OEM quirk.
+  static Future<bool> canUseFullScreenIntent() async {
+    try {
+      final result = await _channel.invokeMethod<bool>('canUseFullScreenIntent');
+      return result ?? true;
+    } on PlatformException catch (e) {
+      debugPrint("Error invoking canUseFullScreenIntent: ${e.message}");
+      return true;
+    } on MissingPluginException {
+      return true;
+    }
+  }
+
+  /// Opens the system "Full screen notifications" page for this app.
+  ///
+  /// Returns `false` when there is nothing to open (below Android 14) or when
+  /// no activity on the device handles the intent.
+  static Future<bool> openFullScreenIntentSettings() async {
+    try {
+      final result =
+          await _channel.invokeMethod<bool>('openFullScreenIntentSettings');
+      return result ?? false;
+    } on PlatformException catch (e) {
+      debugPrint("Error invoking openFullScreenIntentSettings: ${e.message}");
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   // Future<void> triggerIncomingCallNotificationFromPlugin(String messageDataJson) async {
   //   try {
   //     final Map<String, dynamic> data = jsonDecode(messageDataJson);
