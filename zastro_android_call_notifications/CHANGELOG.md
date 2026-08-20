@@ -94,3 +94,15 @@
   which previously always threw `MissingPluginException`. It clears both the
   cached data and the activity's intent extras.
 
+## 0.0.12
+- Fixed: with no custom ringtone configured, an incoming call could ring with no
+  sound at all. Only `RingtoneManager.getDefaultUri(TYPE_RINGTONE)` was tried,
+  which resolves to whatever tone the user picked — and when that pick lives in
+  external media, reading it needs `READ_MEDIA_AUDIO` on Android 13+, a
+  permission a calling app has no reason to hold. `setDataSource` threw
+  `SecurityException`, and because 0.0.11 made the call notification channel
+  silent by design there was nothing else left to make a sound.
+  The system ringtone now falls through several sources — the user's tone, the
+  default alias, then the built-in ringtone and notification tones, which never
+  need a permission — and logs which one it ended up using.
+

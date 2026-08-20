@@ -15,6 +15,8 @@ import android.media.MediaPlayer
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.RingtoneManager
+import android.net.Uri
+import android.provider.Settings
 import android.os.PowerManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -531,11 +533,15 @@ class CallNotificationService : Service() {
             )
         }
 
-        // Try the app's custom ringtone first; if anything about it is wrong
-        // fall back to the system ringtone so the call is never silent.
-        if (!playRingtone(ringtoneSpec)) {
-            playRingtone(null)
-        }
+        // The app's own tone first, then the system chain. Either way something
+        // has to ring: the notification channel is silent by design, so this
+        // player is the only thing making noise.
+        if (ringtoneSpec != null && playCustomRingtone(ringtoneSpec!!)) return
+        if (playSystemRingtone()) return
+        Log.e(
+            "CallNotificationService",
+            "No ringtone could be played at all — the call is ringing silently"
+        )
             // Set volume manually
 //        val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING)
 //        audioManager.setStreamVolume(AudioManager.STREAM_RING, maxVolume, AudioManager.FLAG_SHOW_UI)
@@ -546,46 +552,96 @@ class CallNotificationService : Service() {
          * is null. Returns false if playback could not be started, so the caller
          * can retry with the default.
          */
-        private fun playRingtone(spec: String?): Boolean {
+        private fun newRingtonePlayer(): MediaPlayer = MediaPlayer().apply {
+            setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+            )
+        }
+
+        /** Plays the ringtone the host app asked for. False means fall through. */
+        private fun playCustomRingtone(spec: String): Boolean {
+            val player = newRingtonePlayer()
             return try {
-                val player = MediaPlayer()
-                player.setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
-                )
-
-                val applied = RingtoneResolver.applyTo(player, this, spec)
-                if (!applied) {
-                    if (spec != null) {
-                        // The custom ringtone did not resolve — let the caller retry.
-                        player.release()
-                        return false
-                    }
-                    val defaultUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-                    if (defaultUri == null) {
-                        player.release()
-                        Log.w("CallNotificationService", "No system ringtone available")
-                        return false
-                    }
-                    player.setDataSource(this, defaultUri)
+                if (RingtoneResolver.applyTo(player, this, spec)) {
+                    startPlayer(player)
+                } else {
+                    releaseQuietly(player)
+                    false
                 }
-
-                player.isLooping = true
-                player.prepare()
-                player.start()
-                mediaPlayer = player
-                true
-            } catch (e: IOException) {
-                Log.e("CallNotificationService", "Ringtone failed to play: ${e.message}")
-                false
-            } catch (e: IllegalStateException) {
-                Log.e("CallNotificationService", "Ringtone in a bad state: ${e.message}")
-                false
             } catch (e: Exception) {
-                Log.e("CallNotificationService", "Ringtone error: ${e.message}")
+                Log.w("CallNotificationService", "Custom ringtone '$spec' failed: ${e.message}")
+                releaseQuietly(player)
                 false
+            }
+        }
+
+        /**
+         * Plays the phone's own ringtone, trying every source in turn.
+         *
+         * This used to try `getDefaultUri(TYPE_RINGTONE)` and nothing else. That
+         * resolves to whatever tone the user picked, and when the pick lives in
+         * external media reading it needs READ_MEDIA_AUDIO on Android 13+ — a
+         * permission a calling app has no reason to hold. `setDataSource` then
+         * threw SecurityException, and with the notification channel silent by
+         * design the call rang not at all. The later entries below are the
+         * built-in tones, which never need a permission.
+         */
+        private fun playSystemRingtone(): Boolean {
+            for ((label, uri) in systemRingtoneCandidates()) {
+                if (uri == null) continue
+                val player = newRingtonePlayer()
+                try {
+                    player.setDataSource(this, uri)
+                    if (startPlayer(player)) {
+                        Log.d("CallNotificationService", "Ringing with system tone: $label")
+                        return true
+                    }
+                } catch (e: Exception) {
+                    Log.w("CallNotificationService", "System tone '$label' unusable: ${e.message}")
+                    releaseQuietly(player)
+                }
+            }
+            return false
+        }
+
+        private fun systemRingtoneCandidates(): List<Pair<String, Uri?>> = listOf(
+            "user ringtone" to runCatching {
+                RingtoneManager.getActualDefaultRingtoneUri(this, RingtoneManager.TYPE_RINGTONE)
+            }.getOrNull(),
+            "default ringtone" to runCatching {
+                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+            }.getOrNull(),
+            "built-in ringtone" to Settings.System.DEFAULT_RINGTONE_URI,
+            "default notification tone" to runCatching {
+                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            }.getOrNull(),
+            "built-in notification tone" to Settings.System.DEFAULT_NOTIFICATION_URI
+        )
+
+        private fun startPlayer(player: MediaPlayer): Boolean = try {
+            player.isLooping = true
+            player.prepare()
+            player.start()
+            mediaPlayer = player
+            true
+        } catch (e: IOException) {
+            Log.w("CallNotificationService", "Ringtone could not be opened: ${e.message}")
+            releaseQuietly(player)
+            false
+        } catch (e: Exception) {
+            Log.w("CallNotificationService", "Ringtone could not start: ${e.message}")
+            releaseQuietly(player)
+            false
+        }
+
+        private fun releaseQuietly(player: MediaPlayer) {
+            try {
+                player.release()
+            } catch (e: Exception) {
+                // Already gone; nothing useful to do.
             }
         }
 
