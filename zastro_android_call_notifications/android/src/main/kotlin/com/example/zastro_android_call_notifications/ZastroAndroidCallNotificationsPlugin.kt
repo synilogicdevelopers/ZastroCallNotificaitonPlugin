@@ -128,6 +128,34 @@ class ZastroAndroidCallNotificationsPlugin : FlutterPlugin, MethodCallHandler, A
                     }
                 }
 
+                /*
+                 * Sets the ringtone used when a call arrives without an explicit
+                 * one — including calls raised from a data-only FCM payload.
+                 */
+                "setDefaultRingtone" -> {
+                    RingtoneResolver.storeDefault(context, call.argument<String>("ringtone"))
+                    result.success(null)
+                }
+
+                "getDefaultRingtone" -> {
+                    result.success(RingtoneResolver.readDefault(context))
+                }
+
+                /*
+                 * Look of the call notification. Stored rather than passed per
+                 * call, because a call raised from a data-only FCM payload never
+                 * goes through Dart at all.
+                 */
+                "setCallNotificationAppearance" -> {
+                    CallNotificationAppearance.store(
+                        context,
+                        call.argument<String>("smallIcon"),
+                        call.argument<String>("accentColor"),
+                        call.argument<Boolean>("colorized")
+                    )
+                    result.success(null)
+                }
+
                 "showCallNotification" -> {
                     val type = call.argument<String>("type") ?: ""
                     val uniqueId = call.argument<String>("uniqueId") ?: ""
@@ -137,6 +165,7 @@ class ZastroAndroidCallNotificationsPlugin : FlutterPlugin, MethodCallHandler, A
                     val callerImage = call.argument<String>("caller_image") ?: ""
                     val messageDataInString =
                         call.argument<String>("message_data_in_string") ?: "{}"
+                    val ringtone = call.argument<String>("ringtone")
 //                    Log.d(
 //                        "FlutterCallkitIncoming",
 //                        "Triggering showIncomingNotification with data: " + messageDataInString.toString()
@@ -149,7 +178,8 @@ class ZastroAndroidCallNotificationsPlugin : FlutterPlugin, MethodCallHandler, A
                         notificationId,
                         callerName,
                         callerImage,
-                        messageDataInString
+                        messageDataInString,
+                        ringtone
                     )
                     result.success("Call notification started")
                 }
@@ -176,6 +206,24 @@ class ZastroAndroidCallNotificationsPlugin : FlutterPlugin, MethodCallHandler, A
 
                 "openFullScreenIntentSettings" -> {
                     result.success(openFullScreenIntentSettings())
+                }
+
+                /*
+                 * Drops the action the host app has just finished handling.
+                 *
+                 * The activity's own intent has to be cleared too, not just the
+                 * cached copy: the intent outlives the launch, so a config
+                 * change (rotation, theme, locale) re-runs handleIntent and
+                 * would resurrect the very action that was just consumed.
+                 */
+                "clearNotificationData" -> {
+                    latestNotificationData = null
+                    activity?.intent?.apply {
+                        removeExtra("key")
+                        removeExtra("message_data_in_string")
+                        removeExtra("notificationJson")
+                    }
+                    result.success(null)
                 }
 
                 "notificationData" -> {
@@ -308,6 +356,7 @@ class ZastroAndroidCallNotificationsPlugin : FlutterPlugin, MethodCallHandler, A
         callerName: String,
         callerImage: String,
         messageDataInString: String,
+        ringtone: String?,
     ) {
         val intent = Intent(context, CallNotificationService::class.java).apply {
             putExtra("type", type)
@@ -317,6 +366,7 @@ class ZastroAndroidCallNotificationsPlugin : FlutterPlugin, MethodCallHandler, A
             putExtra("caller_name", callerName)
             putExtra("caller_image", callerImage)
             putExtra("message_data_in_string", messageDataInString)
+            putExtra("ringtone", ringtone)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(intent)

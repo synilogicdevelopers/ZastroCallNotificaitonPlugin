@@ -3,21 +3,17 @@ package com.example.zastro_android_call_notifications
 import android.app.Activity
 import android.app.KeyguardManager
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.Shader
 import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Bundle
-import android.os.Parcelable
 import android.util.Log
 import android.view.View
 import android.view.WindowManager
@@ -31,9 +27,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.net.HttpURLConnection
-import java.net.URL
+import java.util.Date
 
 /**
  * WhatsApp-style full-screen incoming call screen.
@@ -44,12 +38,12 @@ import java.net.URL
  * the app is in the background, while it is killed/terminated and while the
  * device is locked or the screen is off.
  *
- * The screen deliberately owns **no** business logic: Accept / Decline / body
- * tap simply fire the very same [PendingIntent]s that the notification's own
- * buttons carry, so the existing Dart flow (`key` extra -> `HomeController.
- * getNotificationData()` -> `processNotificationAction`) stays byte-for-byte
- * identical. Nothing downstream can tell whether the user tapped the
- * notification or this screen.
+ * The screen deliberately owns **no** business logic: Accept / Decline simply
+ * replay what the notification's own buttons do — broadcast the action, then
+ * open the app with the same `key` extra and payload — so the existing Dart
+ * flow (`key` -> `HomeController.getNotificationData()` ->
+ * `processNotificationAction`) stays byte-for-byte identical. Nothing
+ * downstream can tell whether the user tapped the notification or this screen.
  */
 class IncomingCallActivity : Activity() {
 
@@ -57,6 +51,10 @@ class IncomingCallActivity : Activity() {
         private const val TAG = "ZastroIncomingCallUi"
 
         /** Sent by [CallNotificationService] when the call stops ringing. */
+        /** Must match the keys CallNotificationService puts on the launch intent. */
+        private const val ACTION_ANSWER = "ACTION_ANSWER_CALL"
+        private const val ACTION_DECLINE = "ACTION_DECLINE_CALL"
+
         const val ACTION_DISMISS_CALL_UI =
             "com.example.zastro_android_call_notifications.DISMISS_INCOMING_CALL_UI"
 
@@ -65,25 +63,27 @@ class IncomingCallActivity : Activity() {
         const val EXTRA_CALLER_IMAGE = "caller_image"
         const val EXTRA_TYPE = "type"
 
-        private const val EXTRA_ANSWER_INTENT = "zastro_answer_pending_intent"
-        private const val EXTRA_DECLINE_INTENT = "zastro_decline_pending_intent"
-        private const val EXTRA_CONTENT_INTENT = "zastro_content_pending_intent"
+        /** Wall-clock millis at which the call started ringing. */
+        const val EXTRA_CALL_START_TIME = "call_start_time"
 
-        /**
-         * Builds the intent used as the notification's full-screen intent.
-         *
-         * The three [PendingIntent]s are the exact instances attached to the
-         * notification, so this screen can never drift from the notification.
-         */
+        /** Raw push payload, forwarded to the app exactly as the notification does. */
+        const val EXTRA_MESSAGE_DATA = "message_data_in_string"
+
+        const val EXTRA_UNIQUE_ID = "uniqueId"
+        const val EXTRA_CUSTOMER_UNI_ID = "customerUniId"
+
+
+        /** Builds the intent used as the notification's full-screen intent. */
         fun getIntent(
             context: Context,
             notificationId: Int,
             callerName: String,
             callerImage: String,
             type: String,
-            answerPendingIntent: PendingIntent?,
-            declinePendingIntent: PendingIntent?,
-            contentPendingIntent: PendingIntent?
+            callStartTime: Long,
+            messageDataInString: String,
+            uniqueId: String,
+            customerUniId: String
         ): Intent = Intent(context, IncomingCallActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -93,9 +93,10 @@ class IncomingCallActivity : Activity() {
             putExtra(EXTRA_CALLER_NAME, callerName)
             putExtra(EXTRA_CALLER_IMAGE, callerImage)
             putExtra(EXTRA_TYPE, type)
-            putExtra(EXTRA_ANSWER_INTENT, answerPendingIntent)
-            putExtra(EXTRA_DECLINE_INTENT, declinePendingIntent)
-            putExtra(EXTRA_CONTENT_INTENT, contentPendingIntent)
+            putExtra(EXTRA_CALL_START_TIME, callStartTime)
+            putExtra(EXTRA_MESSAGE_DATA, messageDataInString)
+            putExtra(EXTRA_UNIQUE_ID, uniqueId)
+            putExtra(EXTRA_CUSTOMER_UNI_ID, customerUniId)
         }
 
         /**
@@ -120,9 +121,6 @@ class IncomingCallActivity : Activity() {
     private val uiScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private var notificationId: Int = -1
-    private var answerPendingIntent: PendingIntent? = null
-    private var declinePendingIntent: PendingIntent? = null
-    private var contentPendingIntent: PendingIntent? = null
 
     /** Guards against a double tap firing two pending intents. */
     private var actionTaken = false
@@ -206,9 +204,6 @@ class IncomingCallActivity : Activity() {
 
     private fun bind(intent: Intent) {
         notificationId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, -1)
-        answerPendingIntent = intent.pendingIntentExtra(EXTRA_ANSWER_INTENT)
-        declinePendingIntent = intent.pendingIntentExtra(EXTRA_DECLINE_INTENT)
-        contentPendingIntent = intent.pendingIntentExtra(EXTRA_CONTENT_INTENT)
 
         val type = intent.getStringExtra(EXTRA_TYPE).orEmpty()
         val callerName = intent.getStringExtra(EXTRA_CALLER_NAME)
@@ -217,15 +212,105 @@ class IncomingCallActivity : Activity() {
         val callerImage = intent.getStringExtra(EXTRA_CALLER_IMAGE).orEmpty()
 
         findViewById<TextView>(R.id.zastro_caller_name).text = callerName
-        findViewById<TextView>(R.id.zastro_call_type_label).setText(labelFor(type))
         findViewById<ImageView>(R.id.zastro_call_type_icon).setImageResource(iconFor(type))
-        findViewById<TextView>(R.id.zastro_call_subtitle).text = appLabel()
+
+        bindAppIdentity()
+        bindTypeAndTime(type, intent.getLongExtra(EXTRA_CALL_START_TIME, 0L))
+        bindAppBadge()
 
         findViewById<ImageButton>(R.id.zastro_btn_answer).setOnClickListener { onAnswer() }
         findViewById<ImageButton>(R.id.zastro_btn_decline).setOnClickListener { onDecline() }
         findViewById<View>(R.id.zastro_call_root).setOnClickListener { /* swallow taps */ }
 
-        loadCallerPhoto(callerImage)
+        loadCallerPhoto(callerImage, callerName)
+    }
+
+    /** App icon and name in the header, so the user sees which app is ringing. */
+    private fun bindAppIdentity() {
+        val nameView = findViewById<TextView>(R.id.zastro_app_name)
+        val iconView = findViewById<ImageView>(R.id.zastro_app_icon)
+
+        nameView.text = try {
+            packageManager.getApplicationLabel(applicationInfo).toString()
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not read app label: ${e.message}")
+            ""
+        }
+
+        val icon = try {
+            packageManager.getApplicationIcon(packageName)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not read app icon: ${e.message}")
+            null
+        }
+        if (icon == null) {
+            iconView.visibility = View.GONE
+        } else {
+            iconView.setImageDrawable(icon)
+            iconView.visibility = View.VISIBLE
+        }
+    }
+
+    /**
+     * "Incoming voice call · 12:58 pm". The time uses the user's own 12/24 hour
+     * setting, and is dropped entirely rather than risk showing a wrong one.
+     */
+    private fun bindTypeAndTime(type: String, startTime: Long) {
+        val view = findViewById<TextView>(R.id.zastro_call_type_label)
+        val label = getString(labelFor(type))
+
+        val time = if (startTime <= 0L) {
+            null
+        } else {
+            try {
+                android.text.format.DateFormat.getTimeFormat(this).format(Date(startTime))
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not format call time: ${e.message}")
+                null
+            }
+        }
+
+        view.text = if (time == null) label else getString(R.string.zastro_type_and_time, label, time)
+    }
+
+    /**
+     * Host app launcher icon in the bottom-right of the caller photo, the way
+     * WhatsApp badges its own calls. Stays hidden if the icon cannot be loaded.
+     */
+    private fun bindAppBadge() {
+        val badge = findViewById<ImageView>(R.id.zastro_app_badge)
+        val icon = try {
+            packageManager.getApplicationIcon(packageName)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not load app icon for badge: ${e.message}")
+            null
+        }
+        if (icon == null) {
+            badge.visibility = View.GONE
+            return
+        }
+        // Launcher icons are square (or adaptive), so round them to match the
+        // circular badge instead of letting the corners poke out of the ring.
+        val size = resources.getDimensionPixelSize(R.dimen.zastro_call_badge_size) -
+            2 * resources.getDimensionPixelSize(R.dimen.zastro_call_badge_padding)
+        val bitmap = drawableToBitmap(icon, size)
+        val circular = bitmap?.let { CallerPhotoLoader.toCircular(it, size) }
+        badge.setImageDrawable(
+            if (circular != null) BitmapDrawable(resources, circular) else icon
+        )
+        badge.visibility = View.VISIBLE
+    }
+
+    private fun drawableToBitmap(drawable: Drawable, size: Int): Bitmap? = try {
+        val target = size.coerceAtLeast(1)
+        val bitmap = Bitmap.createBitmap(target, target, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, target, target)
+        drawable.draw(canvas)
+        bitmap
+    } catch (e: Exception) {
+        Log.w(TAG, "Could not rasterise app icon: ${e.message}")
+        null
     }
 
     private fun labelFor(type: String): Int = when (type.trim().lowercase()) {
@@ -241,33 +326,51 @@ class IncomingCallActivity : Activity() {
         else -> R.drawable.zastro_ic_call_type_voice
     }
 
-    private fun appLabel(): String = try {
-        packageManager.getApplicationLabel(applicationInfo).toString()
-    } catch (e: Exception) {
-        ""
-    }
-
-    private fun loadCallerPhoto(url: String) {
+    private fun loadCallerPhoto(url: String, callerName: String) {
         // A rebind means a different caller: drop any download still in flight
-        // so it cannot land on top of the new one, and go back to the
-        // placeholder until the new photo arrives.
+        // so it cannot land on top of the new one.
         photoJob?.cancel()
         val avatar = findViewById<ImageView>(R.id.zastro_caller_avatar)
-        val placeholderPadding =
-            resources.getDimensionPixelSize(R.dimen.zastro_call_avatar_padding)
-        avatar.setPadding(
-            placeholderPadding, placeholderPadding, placeholderPadding, placeholderPadding
-        )
-        avatar.setImageResource(R.drawable.zastro_ic_avatar_placeholder)
 
-        if (url.isBlank()) return
+        // Sized from the resource, not the view: the download can finish before
+        // the first layout pass, when getWidth() is still 0.
+        val size = resources.getDimensionPixelSize(R.dimen.zastro_call_avatar_size)
+
+        // Start on the best offline avatar we can draw, so the screen never
+        // shows an empty circle even for the split second before a photo lands.
+        showFallbackAvatar(avatar, callerName, size)
+
+        if (url.isBlank()) {
+            Log.d(TAG, "No caller photo url for this call, showing initials")
+            return
+        }
         photoJob = uiScope.launch {
-            val bitmap = withContext(Dispatchers.IO) { downloadBitmap(url) } ?: return@launch
+            val bitmap = CallerPhotoLoader.load(url)
+            if (bitmap == null) {
+                Log.d(TAG, "Caller photo unavailable, keeping initials")
+                return@launch
+            }
             if (!isActive || isFinishing) return@launch
-            val circular = toCircularBitmap(bitmap, avatar.width.takeIf { it > 0 } ?: bitmap.width)
+            val circular = CallerPhotoLoader.toCircular(bitmap, size) ?: return@launch
             avatar.setPadding(0, 0, 0, 0)
             avatar.setImageDrawable(BitmapDrawable(resources, circular))
         }
+    }
+
+    /**
+     * Initials when the caller has a usable name, otherwise the generic person
+     * glyph. Backends often send a name but no photo url.
+     */
+    private fun showFallbackAvatar(avatar: ImageView, callerName: String, size: Int) {
+        val initials = InitialsAvatar.create(callerName, size)
+        if (initials != null) {
+            avatar.setPadding(0, 0, 0, 0)
+            avatar.setImageDrawable(BitmapDrawable(resources, initials))
+            return
+        }
+        val inset = resources.getDimensionPixelSize(R.dimen.zastro_call_avatar_padding)
+        avatar.setPadding(inset, inset, inset, inset)
+        avatar.setImageResource(R.drawable.zastro_ic_avatar_placeholder)
     }
 
     // ---------------------------------------------------------------- actions
@@ -280,8 +383,8 @@ class IncomingCallActivity : Activity() {
         // Answering has to bring the Flutter UI up, which cannot happen behind a
         // locked keyguard — ask the system to dismiss it first.
         dismissKeyguardThen {
-            fire(answerPendingIntent ?: contentPendingIntent)
-            finishAndRemoveTaskCompat()
+            handOff(ACTION_ANSWER, "answer")
+            closeCallUi()
         }
     }
 
@@ -290,23 +393,82 @@ class IncomingCallActivity : Activity() {
         actionTaken = true
         unregisterDismissReceiver()
         stopRinging()
-        // Declining intentionally does NOT force an unlock: it must behave
-        // exactly like the notification's own Decline button.
-        fire(declinePendingIntent)
-        finishAndRemoveTaskCompat()
+        // Same shape as onAnswer, deliberately. Declining also has to bring the
+        // app up — that is where the decline API call and the RTDB write live —
+        // and neither can happen behind a locked keyguard.
+        dismissKeyguardThen {
+            handOff(ACTION_DECLINE, "decline")
+            closeCallUi()
+        }
     }
 
-    private fun fire(pendingIntent: PendingIntent?) {
-        if (pendingIntent == null) {
-            Log.w(TAG, "No pending intent to fire — nothing to do")
-            return
-        }
+    /**
+     * Hands the action back to the app, doing exactly what TransparentActivity
+     * does — but directly, from this activity.
+     *
+     * The action pending intents route through TransparentActivity, which
+     * declares the same empty taskAffinity as this screen and therefore lives in
+     * the same task. Finishing this screen tore that task down and took the
+     * freshly launched MainActivity with it: the app came up, drew one frame and
+     * vanished, so the action never reached Dart. Tapping the notification's own
+     * buttons worked precisely because this screen was not in the picture.
+     *
+     * Doing both steps here keeps the observable behaviour identical (the
+     * broadcast still reaches CallActionReceiver, the app still opens with the
+     * same `key` and payload) without the shared-task round trip.
+     */
+    private fun handOff(actionKey: String, label: String) {
+        notifyActionReceiver(actionKey, label)
+        openAppDirectly(actionKey, label)
+    }
+
+    /** The same broadcast TransparentActivity sends, so `onCallAction` still fires. */
+    private fun notifyActionReceiver(actionKey: String, label: String) {
         try {
-            pendingIntent.send()
-        } catch (e: PendingIntent.CanceledException) {
-            Log.w(TAG, "Pending intent was already cancelled: ${e.message}")
+            val broadcast = Intent(actionKey).apply {
+                setPackage(packageName)
+                putExtra(EXTRA_NOTIFICATION_ID, notificationId)
+                putExtra(EXTRA_CALLER_NAME, intent.getStringExtra(EXTRA_CALLER_NAME).orEmpty())
+                putExtra(EXTRA_CALLER_IMAGE, intent.getStringExtra(EXTRA_CALLER_IMAGE).orEmpty())
+                putExtra(EXTRA_TYPE, intent.getStringExtra(EXTRA_TYPE).orEmpty())
+                putExtra(EXTRA_UNIQUE_ID, intent.getStringExtra(EXTRA_UNIQUE_ID).orEmpty())
+                putExtra(
+                    EXTRA_CUSTOMER_UNI_ID,
+                    intent.getStringExtra(EXTRA_CUSTOMER_UNI_ID).orEmpty()
+                )
+            }
+            sendBroadcast(broadcast)
+            Log.d(TAG, "Broadcast $label action to the app")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to fire pending intent", e)
+            Log.w(TAG, "Could not broadcast $label action: ${e.message}")
+        }
+    }
+
+    /**
+     * Opens the app with the same `key` + payload the notification would carry.
+     * This screen is a visible activity, so it is always allowed to start one —
+     * no background-activity-start restriction applies.
+     */
+    private fun openAppDirectly(actionKey: String, label: String) {
+        try {
+            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+            if (launchIntent == null) {
+                Log.e(TAG, "No launch intent for $packageName — cannot open the app for $label")
+                return
+            }
+            launchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+            launchIntent.putExtra("key", actionKey)
+            launchIntent.putExtra(
+                EXTRA_MESSAGE_DATA,
+                intent.getStringExtra(EXTRA_MESSAGE_DATA).orEmpty()
+            )
+            startActivity(launchIntent)
+            Log.d(TAG, "Opened the app for $label")
+        } catch (e: Exception) {
+            Log.e(TAG, "Could not open the app for $label", e)
         }
     }
 
@@ -397,16 +559,22 @@ class IncomingCallActivity : Activity() {
 
     private fun closeScreen() {
         unregisterDismissReceiver()
-        finishAndRemoveTaskCompat()
+        closeCallUi()
     }
 
-    private fun finishAndRemoveTaskCompat() {
+    private fun closeCallUi() {
         if (isFinishing) return
-        try {
-            finishAndRemoveTask()
-        } catch (e: Exception) {
-            finish()
-        }
+        // Never finishAndRemoveTask() here: removing the task also sends the
+        // user to the home screen, and that yanked away the MainActivity the
+        // answer/decline pending intent had just brought forward — the app
+        // visibly opened for one frame and was pushed straight back down, so
+        // the action never reached Dart. TransparentActivity shares this
+        // activity's empty taskAffinity, so it lives in the same task and was
+        // being torn down with it too.
+        //
+        // Nothing is lost by finishing normally: the manifest already marks
+        // this activity excludeFromRecents, which is all the removal was for.
+        finish()
         // No overridePendingTransition() needed — ZastroIncomingCallTheme
         // already sets windowAnimationStyle to @null.
     }
@@ -422,44 +590,4 @@ class IncomingCallActivity : Activity() {
         }
     }
 
-    // ---------------------------------------------------------------- utils
-
-    @Suppress("DEPRECATION", "UNCHECKED_CAST")
-    private fun Intent.pendingIntentExtra(key: String): PendingIntent? =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            getParcelableExtra(key, PendingIntent::class.java)
-        } else {
-            getParcelableExtra<Parcelable>(key) as? PendingIntent
-        }
-
-    private fun downloadBitmap(src: String): Bitmap? = try {
-        val connection = URL(src).openConnection() as HttpURLConnection
-        connection.connectTimeout = 10_000
-        connection.readTimeout = 10_000
-        connection.doInput = true
-        connection.connect()
-        connection.inputStream.use { BitmapFactory.decodeStream(it) }
-    } catch (e: Exception) {
-        Log.w(TAG, "Caller photo could not be loaded: ${e.message}")
-        null
-    }
-
-    /** Centre-crops [source] to a square and masks it into a circle. */
-    private fun toCircularBitmap(source: Bitmap, targetSize: Int): Bitmap {
-        val size = targetSize.coerceAtLeast(1)
-        val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(output)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-
-        val cropSize = minOf(source.width, source.height)
-        val left = (source.width - cropSize) / 2
-        val top = (source.height - cropSize) / 2
-        val squared = Bitmap.createBitmap(source, left, top, cropSize, cropSize)
-        val scaled = Bitmap.createScaledBitmap(squared, size, size, true)
-
-        paint.shader = BitmapShader(scaled, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
-        val radius = size / 2f
-        canvas.drawCircle(radius, radius, radius, paint)
-        return output
-    }
 }

@@ -35,6 +35,8 @@ class CallReceiver : BroadcastReceiver() {
 //            Log.d("CallReceiver", "Parsed type: $type, notificationId: $notificationId")
             val callerName = messageData?.optString("customerName", "")
             val callerImage = messageData?.optString("customerImage", "")
+            // Optional: the payload may name the ringtone to use for this call.
+            val ringtone = messageData?.optString("ringtone", "")?.takeIf { it.isNotBlank() }
             val serviceIntent = Intent(context, CallNotificationService::class.java).apply {
                 putExtra("message_data_in_string", messageDataJsonString)
                 putExtra("type", type)
@@ -43,6 +45,7 @@ class CallReceiver : BroadcastReceiver() {
                 putExtra("notificationId", notificationId)
                 putExtra("caller_name", callerName)
                 putExtra("caller_image", callerImage)
+                putExtra("ringtone", ringtone)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(serviceIntent)

@@ -212,3 +212,54 @@ cold start — persist a flag so the user is never repeatedly dropped into Setti
 `USE_FULL_SCREEN_INTENT` is declared by the plugin's own manifest, so no extra
 entry is needed in the host app's `AndroidManifest.xml`.
 
+
+## Custom ringtone
+
+Incoming calls ring from the plugin's own player, on a dedicated **silent**
+notification channel (`zastro_incoming_call`). That is what makes a custom
+ringtone possible: a notification channel's sound is fixed when the channel is
+created and cannot be changed afterwards.
+
+A ringtone can be set three ways. Highest precedence first:
+
+1. **Per call** — `showCallNotification({... 'ringtone': '<spec>'})`
+2. **Per call from the server** — a `ringtone` field in the FCM data payload.
+   This is the one that applies when the app is dead, because that path never
+   reaches Dart.
+3. **App-wide** — `ChatNotificationPlugin.setDefaultRingtone('<spec>')`,
+   persisted natively so it survives process death. Call it once during startup.
+
+Accepted values for `<spec>`:
+
+    null / '' / 'default'          system ringtone
+    'assets/sounds/ring.mp3'       Flutter asset (declare it under flutter: assets:)
+    'raw/ring' or 'ring'           android/app/src/main/res/raw/ring.mp3
+    'https://…', 'content://…',
+    'file://…'                     any uri
+    '/storage/emulated/0/ring.mp3' absolute path
+
+Anything that cannot be resolved falls back to the system ringtone, so a wrong
+value can never leave an incoming call silent. Resolution is logged under the
+`ZastroRingtone` tag.
+
+
+## Notification appearance
+
+    await ChatNotificationPlugin.setCallNotificationAppearance(
+      smallIcon: 'ic_notification',   // drawable name in the host app
+      accentColor: '#FF6B00',         // tints the icon and action buttons
+      colorized: false,               // paint the whole notification: opt-in
+    );
+
+Stored natively, so it also applies to calls raised from a data-only FCM payload.
+Call it once during startup.
+
+`smallIcon` **must be a monochrome notification icon**, never the colour launcher
+icon: Android draws a small icon from its alpha channel alone and discards the
+colour, so a fully opaque icon renders as a solid blob. When omitted the plugin
+looks for `ic_notification`, `ic_stat_notification` and `ic_stat_name` in the
+host app before falling back to its own icon.
+
+`colorized` is off by default because a light brand colour makes the notification
+text unreadable. Check it on a real device before enabling it.
+

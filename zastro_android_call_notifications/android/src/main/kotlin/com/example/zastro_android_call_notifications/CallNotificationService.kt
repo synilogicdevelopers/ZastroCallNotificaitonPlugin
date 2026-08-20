@@ -52,7 +52,23 @@ import java.io.IOException
 class CallNotificationService : Service() {
 
     companion object {
-        const val CHANNEL_ID = "chat_channel"
+        /**
+         * Dedicated, deliberately SILENT channel for the incoming call banner.
+         *
+         * This used to post to the host app's "chat_channel". A notification
+         * channel's sound and vibration are fixed at creation and cannot be
+         * changed afterwards, and the host app creates that channel first (with
+         * a ringtone and a vibration pattern), so the `setSound(null, null)`
+         * below was a no-op against it. The channel therefore rang the system
+         * ringtone while this service rang its own — two ringtones at once, and
+         * two vibrations. It was easy to miss only because both sounds used to
+         * be the same system ringtone; a custom ringtone makes it obvious.
+         *
+         * The ringtone and vibration for a call are owned by this service, so
+         * its channel must stay silent. The host app's own channel is left
+         * untouched — other notification types still use it and still ring.
+         */
+        const val CHANNEL_ID = "zastro_incoming_call"
         const val FLUTTER_ENGINE_NAME = "flutter_engine"
         const val CHANNEL_NAME = "Chat notifications"
         const val ACTION_ANSWER_CALL = "ACTION_ANSWER_CALL"
@@ -65,6 +81,9 @@ class CallNotificationService : Service() {
          * with the answer/decline/content pending intents above.
          */
         private const val FULL_SCREEN_REQUEST_CODE = 100
+
+        /** Large enough for the notification avatar on any density. */
+        private const val NOTIFICATION_AVATAR_SIZE_PX = 256
     }
 
     private var flutterEngine: FlutterEngine? = null
@@ -75,6 +94,15 @@ class CallNotificationService : Service() {
 
     /** Id of the call currently ringing, so teardown can be scoped to it. */
     private var ringingNotificationId: Int = -1
+
+    /** Ringtone chosen for the call currently ringing. Null means system default. */
+    private var ringtoneSpec: String? = null
+
+    /**
+     * When the current call started ringing. Captured once so the time shown on
+     * the full screen UI does not drift if the notification is rebuilt.
+     */
+    private var callStartTime: Long = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -106,6 +134,7 @@ class CallNotificationService : Service() {
         println("Converted messageData: $messageData")
 
 
+        val ringtone = intent?.getStringExtra("ringtone")
         val uniqueId = intent?.getStringExtra("uniqueId") ?: ""
         val customerUniId = intent?.getStringExtra("customerUniId") ?: ""
         println("CallNotificationService Started!$CALL_NOTIFICATION_ID")
@@ -144,6 +173,8 @@ class CallNotificationService : Service() {
 
             else -> {
                 ringingNotificationId = CALL_NOTIFICATION_ID
+                ringtoneSpec = RingtoneResolver.effectiveSpec(this, ringtone)
+                callStartTime = System.currentTimeMillis()
                 // Step 1: Immediately show notification without photo
                 val placeholderNotification = createCallNotification(
                     messageDataInString,
@@ -166,10 +197,25 @@ class CallNotificationService : Service() {
                     startForeground(CALL_NOTIFICATION_ID, placeholderNotification)
                 }
 
-                //Step 2: In background, load photo and update notification
+                // Step 2: ring straight away.
+                //
+                // These used to sit at the end of the photo-download coroutine,
+                // so the phone stayed silent until the caller's picture had been
+                // fetched — up to the full connect+read timeout on a cold start,
+                // which is exactly the terminated-app case. It went unnoticed
+                // while the notification channel rang by itself; now that the
+                // channel is silent (so a custom ringtone is possible at all),
+                // the service is the only thing making noise and it has to start
+                // immediately. A call must never wait on the network to ring.
+                startRingtone()
+                startVibration()
+                wakeScreen()
+
+                // Step 3: in the background, fetch the photo and refresh the
+                // notification with it. Purely cosmetic, and skipped entirely if
+                // the photo cannot be loaded.
                 serviceScope.launch {
-                    val callerBitmap =
-                        if (callerImage.isNotEmpty()) getBitmapFromURL(callerImage) else null
+                    val callerBitmap = CallerPhotoLoader.load(callerImage) ?: return@launch
                     val notification = createCallNotification(
                         messageDataInString,
                         callerName,
@@ -180,7 +226,6 @@ class CallNotificationService : Service() {
                         customerUniId,
                         callerBitmap
                     )
-
 
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // Android 14+
                         try {
@@ -195,10 +240,6 @@ class CallNotificationService : Service() {
                     } else {
                         startForeground(CALL_NOTIFICATION_ID, notification)
                     }
-
-                    startRingtone()
-                    startVibration()
-                    wakeScreen()
                 }
             }
         }
@@ -219,6 +260,35 @@ class CallNotificationService : Service() {
         return null
     }
 
+    /** "Incoming voice call" / "Incoming video call" / "Incoming chat request". */
+    private fun incomingLabel(type: String): String = when (type.trim().lowercase()) {
+        "call" -> "Incoming voice call"
+        "video" -> "Incoming video call"
+        "chat" -> "Incoming chat request"
+        else -> "Incoming call"
+    }
+
+    /**
+     * "Incoming chat request · 4:47 pm".
+     *
+     * The timestamp in the notification header is drawn by the system, and it
+     * shows "now" for anything posted in the last minute — there is no API to
+     * force an absolute time there. So the start time goes in the body text,
+     * where it is always visible and does not change as the call rings.
+     */
+    private fun incomingLabelWithTime(type: String): String {
+        val label = incomingLabel(type)
+        if (callStartTime <= 0L) return label
+        return try {
+            val time = android.text.format.DateFormat.getTimeFormat(this)
+                .format(java.util.Date(callStartTime))
+            "$label · $time"
+        } catch (e: Exception) {
+            Log.w("CallNotificationService", "Could not format call time: ${e.message}")
+            label
+        }
+    }
+
     private fun createCallNotification(
         messageDataInString: String,
         callerName: String,
@@ -234,20 +304,34 @@ class CallNotificationService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Chat notifications",
+                "Incoming calls",
+                // Still HIGH: anything lower loses the heads-up banner and the
+                // full screen intent along with it.
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
+                description = "Ringing chat, voice and video call requests"
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                // Silent on purpose — startRingtone()/startVibration() own both,
+                // which is what lets a host app choose its own ringtone.
                 setSound(null, null)
+                enableVibration(false)
                 enableLights(true)
-                enableVibration(true)
-                vibrationPattern = longArrayOf(0, 500, 500, 500)
             }
             notificationManager.createNotificationChannel(channel)
         }
 
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            // FLAG_ACTIVITY_NEW_TASK is not optional here. getLaunchIntentForPackage()
+            // sets it, and assigning `flags` (rather than or-ing) used to wipe it out —
+            // so an activity started from these pending intents had no task to land in
+            // whenever the app was not already foregrounded, and simply never opened.
+            // That is why answer/decline worked from TransparentActivity (which sets the
+            // flag) but not straight from the notification or the full screen call UI.
+            // Same flag set as TransparentActivity, which is the path known to work.
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
             putExtra("message_data_in_string", messageDataInString)
         } ?: Intent().apply {
             val mainActivityIntent = packageManager.getLaunchIntentForPackage(packageName)
@@ -346,27 +430,52 @@ class CallNotificationService : Service() {
                 callerName,
                 callerImage,
                 type,
-                answerPendingIntent,
-                declinePendingIntent,
-                pendingIntent
+                callStartTime,
+                messageDataInString,
+                uniqueId,
+                customerUniId
             ),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val notificationBuilder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.incoming_call_arrow)
-            .setContentText("Incoming $type")
+            // The host app's own notification icon when it has one, so the shade
+            // shows the app's mark instead of a generic arrow.
+            .setSmallIcon(CallNotificationAppearance.smallIconRes(this))
+            .setContentText(incomingLabelWithTime(type))
             .setFullScreenIntent(fullScreenPendingIntent, true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setOngoing(true)
+            // Stamped when the call started rather than when the notification was
+            // (re)built, so it reads as the real start time instead of "now".
+            .setWhen(if (callStartTime > 0L) callStartTime else System.currentTimeMillis())
+            .setShowWhen(true)
+            .setUsesChronometer(false)
+            // The notification is rebuilt once the caller photo arrives; without
+            // this the heads-up banner pops a second time on that update.
+            .setOnlyAlertOnce(true)
             .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
+
+        CallNotificationAppearance.accentColor(this)?.let { accent ->
+            notificationBuilder.setColor(accent)
+            // Painting the whole notification is opt-in: a light brand colour
+            // makes a colorized notification unreadable.
+            if (CallNotificationAppearance.colorized(this)) {
+                notificationBuilder.setColorized(true)
+            }
+        }
+
+        // Same fallback as the full screen screen, so the shade never shows a
+        // faceless call just because the payload carried no photo url.
+        val personBitmap = callerBitmap?.let { CallerPhotoLoader.toCircular(it, NOTIFICATION_AVATAR_SIZE_PX) }
+            ?: InitialsAvatar.create(callerName, NOTIFICATION_AVATAR_SIZE_PX)
 
         val person = Person.Builder().setName(callerName)
             .apply {
-                if (callerBitmap != null)
-                    setIcon(androidx.core.graphics.drawable.IconCompat.createWithBitmap(callerBitmap))
+                if (personBitmap != null)
+                    setIcon(androidx.core.graphics.drawable.IconCompat.createWithBitmap(personBitmap))
             }
             .build()
         val callStyle = NotificationCompat.CallStyle.forIncomingCall(
@@ -410,31 +519,74 @@ class CallNotificationService : Service() {
             )
         }
 
-        if (focusResult == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-            try {
-                val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-                mediaPlayer = MediaPlayer().apply {
-                    setAudioAttributes(
-                        AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                            .build()
-                    )
-                    setDataSource(this@CallNotificationService, ringtoneUri)
-                    isLooping = true
-                    prepare()
-                    start()
-                }
-            } catch (e: IOException) {
-                e.printStackTrace()
-                Log.e("CallNotificationService", "Ringtone failed, falling back to vibration: ${e.message}")
-            } catch (e: IllegalStateException) {
-                e.printStackTrace()
-            }
+        // Ring even if focus was refused. Focus used to be a hard gate: when the
+        // request was denied nothing played and nothing was logged, which the
+        // notification channel's own ringtone used to paper over. For an
+        // incoming call a missed ring is the worse outcome, so the denial is
+        // logged and playback goes ahead.
+        if (focusResult != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+            Log.w(
+                "CallNotificationService",
+                "Audio focus not granted (result=$focusResult) — ringing anyway"
+            )
+        }
+
+        // Try the app's custom ringtone first; if anything about it is wrong
+        // fall back to the system ringtone so the call is never silent.
+        if (!playRingtone(ringtoneSpec)) {
+            playRingtone(null)
         }
             // Set volume manually
 //        val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING)
 //        audioManager.setStreamVolume(AudioManager.STREAM_RING, maxVolume, AudioManager.FLAG_SHOW_UI)
+        }
+
+        /**
+         * Starts the ringtone described by [spec], or the system default when it
+         * is null. Returns false if playback could not be started, so the caller
+         * can retry with the default.
+         */
+        private fun playRingtone(spec: String?): Boolean {
+            return try {
+                val player = MediaPlayer()
+                player.setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+
+                val applied = RingtoneResolver.applyTo(player, this, spec)
+                if (!applied) {
+                    if (spec != null) {
+                        // The custom ringtone did not resolve — let the caller retry.
+                        player.release()
+                        return false
+                    }
+                    val defaultUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+                    if (defaultUri == null) {
+                        player.release()
+                        Log.w("CallNotificationService", "No system ringtone available")
+                        return false
+                    }
+                    player.setDataSource(this, defaultUri)
+                }
+
+                player.isLooping = true
+                player.prepare()
+                player.start()
+                mediaPlayer = player
+                true
+            } catch (e: IOException) {
+                Log.e("CallNotificationService", "Ringtone failed to play: ${e.message}")
+                false
+            } catch (e: IllegalStateException) {
+                Log.e("CallNotificationService", "Ringtone in a bad state: ${e.message}")
+                false
+            } catch (e: Exception) {
+                Log.e("CallNotificationService", "Ringtone error: ${e.message}")
+                false
+            }
         }
 
         private fun startVibration() {
@@ -480,16 +632,6 @@ class CallNotificationService : Service() {
                 PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
                 "CallNotificationService:WakeLock"
             ).acquire(5000)
-        }
-
-        private suspend fun getBitmapFromURL(src: String): Bitmap? {
-            return withContext(Dispatchers.IO) {
-                try {
-                    BitmapFactory.decodeStream(URL(src).openConnection().getInputStream())
-                } catch (e: Exception) {
-                    null
-                }
-            }
         }
 
         private fun isAppInForeground(): Boolean {

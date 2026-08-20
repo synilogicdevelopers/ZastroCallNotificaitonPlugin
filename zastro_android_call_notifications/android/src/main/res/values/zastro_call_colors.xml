@@ -14,6 +14,9 @@
     <color name="zastro_call_primary_text">#FFFFFFFF</color>
     <color name="zastro_call_secondary_text">#B3CFD8DC</color>
 
+    <!-- Matches the lower end of the screen gradient, where the badge sits. -->
+    <color name="zastro_call_badge_bg">#FF121C25</color>
+
     <color name="zastro_call_answer">#FF00C853</color>
     <color name="zastro_call_answer_pressed">#FF00913C</color>
     <color name="zastro_call_decline">#FFE53935</color>

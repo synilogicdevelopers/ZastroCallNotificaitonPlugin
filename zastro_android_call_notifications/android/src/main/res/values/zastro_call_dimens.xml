@@ -3,4 +3,10 @@
     <!-- Inset of the placeholder glyph inside the avatar circle. Removed in
          code once the real caller photo, which fills the circle, is loaded. -->
     <dimen name="zastro_call_avatar_padding">32dp</dimen>
+
+    <!-- Avatar circle diameter. The badge is placed at the bottom-right corner
+         of this square, which lands it exactly on the circle's 45 degree point. -->
+    <dimen name="zastro_call_avatar_size">136dp</dimen>
+    <dimen name="zastro_call_badge_size">40dp</dimen>
+    <dimen name="zastro_call_badge_padding">5dp</dimen>
 </resources>

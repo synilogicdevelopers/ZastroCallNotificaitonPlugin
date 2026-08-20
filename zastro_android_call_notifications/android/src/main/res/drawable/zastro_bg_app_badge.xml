@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Ring behind the app icon badge on the caller photo. The solid fill matches the
+  call screen background so the badge reads as punched out of the avatar, the
+  same way WhatsApp's badge does.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="@color/zastro_call_badge_bg" />
+</shape>
